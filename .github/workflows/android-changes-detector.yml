@@ -1,0 +1,62 @@
+name: Android Changes Detector
+
+on:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches: [main, master]
+
+# Cancela builds antigos do mesmo branch
+concurrency:
+  group: android-detector-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect-android-changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      has_changes: ${{ steps.filter.outputs.android }}
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v6
+
+      - name: 🔍 Detect Android-related changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            android:
+              - 'android/**'
+              - 'src/**'
+              - 'capacitor.config.ts'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.github/workflows/build-android-test.yml'
+              - '.github/workflows/android-changes-detector.yml'
+
+      - name: 📊 Changes detection result
+        run: |
+          echo "========================================="
+          echo "🔍 Android changes detected: ${{ steps.filter.outputs.android }}"
+          echo "========================================="
+          if [ "${{ steps.filter.outputs.android }}" == "true" ]; then
+            echo "✅ Mudanças Android detectadas. Build será executado."
+          else
+            echo "⏭️ Sem mudanças Android. Build será pulado."
+          fi
+
+          echo "### 🔍 Android Changes Detection" >> $GITHUB_STEP_SUMMARY
+          echo "- **Has Changes**: ${{ steps.filter.outputs.android }}" >> $GITHUB_STEP_SUMMARY
+
+  trigger-build:
+    needs: detect-android-changes
+    if: needs.detect-android-changes.outputs.has_changes == 'true'
+    uses: ./.github/workflows/build-android-test.yml
+    secrets: inherit
+    with:
+      triggered_by: ${{ github.event_name }}
+      commit_sha: ${{ github.sha }}
+      branch_name: ${{ github.ref_name }}
+      pr_number: ${{ github.event.pull_request.number || 0 }}
