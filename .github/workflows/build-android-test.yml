@@ -1,0 +1,165 @@
+# 🧪 Workflow para build Android de TESTE/USO PESSOAL
+# Gera APK debug não-assinado para instalação em dispositivos pessoais
+# O APK é disponibilizado em Releases com sufixo "-test"
+#
+# Este workflow é independente do build-android.yml de produção
+# e NÃO requer keystore ou upload para Google Play Console
+
+name: Build Android APK - Test (Personal Use)
+
+on:
+  push:
+    branches: [master, release/*, test/*]
+  workflow_dispatch:
+    inputs:
+      release_name:
+        description: 'Nome customizado para a release (opcional)'
+        required: false
+        default: ''
+
+jobs:
+  build-android-test:
+    runs-on: ubuntu-latest
+
+    env:
+      UNSPLASH_KEY: ${{ secrets.UNSPLASH_KEY }}
+      UNSPLASH_CLIENT_ID: ${{ secrets.UNSPLASH_CLIENT_ID }}
+
+    steps:
+      # 📥 Checkout com histórico completo para versionamento correto
+      - name: 📥 Checkout sources
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # Fetch all history for proper versioning
+
+      # 🟢 Setup Node.js com cache automático npm
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: 'npm'  # Automatic npm caching
+
+      # ☕ Setup Java com cache automático Gradle
+      - name: ☕ Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: 21
+          cache: 'gradle'  # Automatic Gradle caching
+
+      # 🔧 Setup Gradle com cleanup automático
+      - name: 🔧 Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          gradle-home-cache-cleanup: true
+
+      # 🤖 Setup Android SDK
+      - name: 🤖 Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: true
+
+      # 📦 Cache adicional para npm directory
+      - name: 📦 Get npm cache directory
+        id: npm-cache-dir
+        run: |
+          echo "dir=$(npm config get cache)" >> $GITHUB_OUTPUT
+
+      - name: 📦 Cache npm directory
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.npm-cache-dir.outputs.dir }}
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      # 📦 Instalar dependências (usa cache quando possível)
+      - name: 📦 Install npm packages
+        run: npm ci --prefer-offline --no-audit
+
+      # 🏗️ Build APK debug (sem keystore)
+      - name: 🏗️ Build Debug APK (unsigned, personal use)
+        run: npm run dist:android
+
+      # 🔍 Debug output - mostrar APKs gerados
+      - name: 🔍 List generated APK files
+        run: |
+          echo "📱 Generated APK files:"
+          find android/app/build/outputs/apk -name "*.apk" -type f -exec ls -lh {} \;
+          echo ""
+          echo "📂 APK locations:"
+          find android/app/build/outputs/apk -name "*.apk" -type f
+
+      # 📤 Upload APKs como artifacts
+      - name: 📤 Upload APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: super-productivity-android-test-${{ github.run_number }}
+          path: android/app/build/outputs/apk/**/*.apk
+          retention-days: 30
+
+      # 🏷️ Gerar nome da release com sufixo -test
+      - name: 🏷️ Generate release name
+        id: release_name
+        run: |
+          # Get version from package.json
+          VERSION=$(node -p "require('./package.json').version")
+
+          # Use custom name if provided, otherwise use version-based name
+          if [ -n "${{ github.event.inputs.release_name }}" ]; then
+            RELEASE_NAME="${{ github.event.inputs.release_name }}"
+          else
+            RELEASE_NAME="v${VERSION}-test-build-${{ github.run_number }}"
+          fi
+
+          echo "release_name=${RELEASE_NAME}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "📋 Release name: ${RELEASE_NAME}"
+
+      # 🚀 Criar GitHub Release com APKs
+      - name: 🚀 Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_name.outputs.release_name }}
+          name: ${{ steps.release_name.outputs.release_name }}
+          prerelease: true  # Marca como prerelease (não é versão oficial)
+          make_latest: false  # Não marcar como latest release
+          fail_on_unmatched_files: true
+          files: |
+            android/app/build/outputs/apk/**/*.apk
+          body: |
+            # 🧪 Build de Teste - Super Productivity v${{ steps.release_name.outputs.version }}
+
+            ⚠️ **ATENÇÃO**: Este é um build de teste/uso pessoal, não uma versão oficial.
+
+            ## 📱 Instalação
+
+            1. Baixe o arquivo APK abaixo
+            2. No seu dispositivo Android, habilite "Fontes desconhecidas" nas configurações
+            3. Instale o APK baixado
+
+            ## ℹ️ Informações do Build
+
+            - **Versão**: ${{ steps.release_name.outputs.version }}
+            - **Build Number**: ${{ github.run_number }}
+            - **Branch**: ${{ github.ref_name }}
+            - **Commit**: ${{ github.sha }}
+            - **Última mensagem**: ${{ github.event.head_commit.message }}
+
+            ## 📦 APKs Disponíveis
+
+            Os APKs estão listados abaixo nos assets desta release.
+
+            ---
+
+            *Build gerado automaticamente pelo workflow build-android-test.yml*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ✅ Mensagem de sucesso
+      - name: ✅ Build completed successfully
+        run: |
+          echo "🎉 Build de teste concluído com sucesso!"
+          echo "📦 Release criada: ${{ steps.release_name.outputs.release_name }}"
+          echo "🔗 APKs disponíveis em: https://github.com/${{ github.repository }}/releases/tag/${{ steps.release_name.outputs.release_name }}"
