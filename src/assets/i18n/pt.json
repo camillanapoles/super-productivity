@@ -53,6 +53,11 @@
     "SEARCH_PLACEHOLDER": "ex., natureza, montanhas, abstrato",
     "TITLE": "Selecionar Imagem de Fundo do Unsplash"
   },
+  "DONATE_PAGE": {
+    "BUTTON_TEXT": "Doar via GitHub Sponsors",
+    "INTRO_1": "Super Productivity é financiado inteiramente pela comunidade. Não há rastreamento, sem anúncios e sem coleta de dados — as suas tarefas permanecem no seu dispositivo.",
+    "INTRO_2": "Se valoriza esta abordagem e deseja manter o projeto saudável e em evolução, um donativo voluntário é muito apreciado."
+  },
   "F": {
     "ATTACHMENT": {
       "DIALOG_EDIT": {
@@ -1971,6 +1976,9 @@
       "L_TRACKING_REMINDER_MIN_TIME": "Tempo de espera antes de mostrar o lembrete de seguimento Banner",
       "TITLE": "Controlo de tempo"
     }
+  },
+  "GLOBAL": {
+    "COPY_SUFFIX": " (cópia)"
   },
   "GLOBAL_RELATIVE_TIME": {
     "FUTURE": {
