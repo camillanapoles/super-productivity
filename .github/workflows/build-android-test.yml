@@ -32,20 +32,24 @@ jobs:
         with:
           fetch-depth: 0  # Fetch all history for proper versioning
 
-      # 🟢 Setup Node.js com cache automático npm
+      # 🔧 Reconfigure git for npm dependencies from GitHub
+      - name: 🔧 Reconfigure git to use HTTP authentication
+        run: >
+          git config --global url."https://github.com/".insteadOf
+          ssh://git@github.com/
+
+      # 🟢 Setup Node.js
       - name: 🟢 Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 20
-          cache: 'npm'  # Automatic npm caching
 
-      # ☕ Setup Java com cache automático Gradle
+      # ☕ Setup Java
       - name: ☕ Setup Java
         uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: 21
-          cache: 'gradle'  # Automatic Gradle caching
 
       # 🔧 Setup Gradle com cleanup automático
       - name: 🔧 Setup Gradle
@@ -76,7 +80,7 @@ jobs:
 
       # 📦 Instalar dependências (usa cache quando possível)
       - name: 📦 Install npm packages
-        run: npm ci --prefer-offline --no-audit
+        run: npm i
 
       # 🏗️ Build APK debug (sem keystore)
       - name: 🏗️ Build Debug APK (unsigned, personal use)
@@ -93,7 +97,7 @@ jobs:
 
       # 📤 Upload APKs como artifacts
       - name: 📤 Upload APK artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: super-productivity-android-test-${{ github.run_number }}
           path: android/app/build/outputs/apk/**/*.apk
@@ -145,7 +149,7 @@ jobs:
             - **Build Number**: ${{ github.run_number }}
             - **Branch**: ${{ github.ref_name }}
             - **Commit**: ${{ github.sha }}
-            - **Última mensagem**: ${{ github.event.head_commit.message }}
+            - **Última mensagem**: ${{ github.event.head_commit.message || 'Manual workflow dispatch (sem mensagem de commit disponível)' }}
 
             ## 📦 APKs Disponíveis
 
