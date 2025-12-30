@@ -1,48 +1,15 @@
-# ============================================================================
-# WORKFLOW ANDROID TEST BUILD - OPTIMIZED FOR 2025
-# ============================================================================
+# 🧪 Workflow para build Android de TESTE/USO PESSOAL
+# Gera APK debug não-assinado para instalação em dispositivos pessoais
+# O APK é disponibilizado em Releases com sufixo "-test"
 #
-# Implementa as melhores práticas de 2025 do GitHub Actions Marketplace:
-# ✅ Gradle Build Scan integration
-# ✅ Dependency graph submission (segurança)
-# ✅ Cache granular multi-layer
-# ✅ Concurrency control
-# ✅ Timeout protection
-# ✅ Enhanced error reporting
-# ✅ Incremental builds
-# ✅ Cache hit monitoring
-#
-# ============================================================================
+# Este workflow é independente do build-android.yml de produção
+# e NÃO requer keystore ou upload para Google Play Console
 
 name: Build Android APK - Test (Personal Use)
 
 on:
-  workflow_call:
-    inputs:
-      triggered_by:
-        description: 'Evento que triggou o build'
-        required: false
-        type: string
-        default: 'workflow_call'
-      commit_sha:
-        description: 'SHA do commit'
-        required: false
-        type: string
-      branch_name:
-        description: 'Nome do branch'
-        required: false
-        type: string
-      pr_number:
-        description: 'Número do PR (se aplicável)'
-        required: false
-        type: number
-        default: 0
-    secrets:
-      UNSPLASH_KEY:
-        required: false
-      UNSPLASH_CLIENT_ID:
-        required: false
-
+  push:
+    branches: [master, release/*, test/*]
   workflow_dispatch:
     inputs:
       release_name:
@@ -50,346 +17,153 @@ on:
         required: false
         default: ''
 
-# Cancela builds antigos do mesmo branch/PR
-concurrency:
-  group: android-build-${{ github.ref }}-${{ inputs.commit_sha || github.sha }}
-  cancel-in-progress: true
-
 jobs:
   build-android-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
 
     env:
       UNSPLASH_KEY: ${{ secrets.UNSPLASH_KEY }}
       UNSPLASH_CLIENT_ID: ${{ secrets.UNSPLASH_CLIENT_ID }}
-      # Otimizações Gradle para CI (2025 best practices)
-      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.parallel=true -Dorg.gradle.caching=true -Dorg.gradle.configureondemand=true
-      GRADLE_USER_HOME: ${{ github.workspace }}/.gradle
 
     steps:
-      # ===== CHECKOUT E SETUP =====
-      - name: 📥 Checkout repository
+      # 📥 Checkout com histórico completo para versionamento correto
+      - name: 📥 Checkout sources
         uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.commit_sha || github.sha }}
-          fetch-depth: 0
+          fetch-depth: 0  # Fetch all history for proper versioning
 
-      - name: 🟢 Setup Node.js with automatic npm cache
+      # 🔧 Reconfigure git for npm dependencies from GitHub
+      - name: 🔧 Reconfigure git to use HTTP authentication
+        run: >
+          git config --global url."https://github.com/".insteadOf
+          ssh://git@github.com/
+
+      # 🟢 Setup Node.js
+      - name: 🟢 Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 20
-          cache: 'npm'
 
-      - name: ☕ Setup Java with automatic Gradle cache
+      # ☕ Setup Java
+      - name: ☕ Setup Java
         uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: 21
-          cache: 'gradle'
 
-      # ===== GRADLE SETUP COM MELHORES PRÁTICAS 2025 =====
-      - name: 🐘 Setup Gradle with optimized cache & build scan
+      # 🔧 Setup Gradle com cleanup automático
+      - name: 🔧 Setup Gradle
         uses: gradle/actions/setup-gradle@v5
         with:
-          # Cache read-only em PRs para evitar corrupção
-          cache-read-only: ${{ github.event_name == 'pull_request' }}
-          # Cache granular - só o que importa
-          gradle-home-cache-includes: |
-            caches
-            notifications
-            wrapper
-          gradle-home-cache-excludes: |
-            caches/build-cache-*
-            caches/*/plugin-resolution/
           gradle-home-cache-cleanup: true
-          # Build Scan para debug avançado (2025 feature)
-          build-scan-publish: true
-          build-scan-terms-of-service-url: "https://gradle.com/help/legal-terms-of-use"
-          build-scan-terms-of-service-agree: "yes"
-          # Dependency graph para segurança (2025 feature)
-          dependency-graph: generate-and-submit
 
+      # 🤖 Setup Android SDK
       - name: 🤖 Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
           accept-android-sdk-licenses: true
-          log-accepted-android-sdk-licenses: false
+          log-accepted-android-sdk-licenses: true
 
-      # ===== CACHE ADICIONAL: Android SDK Components =====
-      - name: 💾 Cache Android SDK components
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.android/sdk
-            ~/.android/avd
-          key: android-sdk-${{ runner.os }}-${{ hashFiles('android/build.gradle', 'android/app/build.gradle') }}
-          restore-keys: |
-            android-sdk-${{ runner.os }}-
-
-      # ===== CACHE NPM ADICIONAL (além do setup-node) =====
+      # 📦 Cache adicional para npm directory
       - name: 📦 Get npm cache directory
         id: npm-cache-dir
-        shell: bash
-        run: echo "dir=$(npm config get cache)" >> $GITHUB_OUTPUT
+        run: |
+          echo "dir=$(npm config get cache)" >> $GITHUB_OUTPUT
 
-      - name: 💾 Cache npm dependencies (granular)
+      - name: 📦 Cache npm directory
         uses: actions/cache@v4
-        id: npm-cache
         with:
           path: ${{ steps.npm-cache-dir.outputs.dir }}
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-
 
-      # ===== CACHE: Frontend Build Output (Incremental Build) =====
-      - name: 💾 Cache frontend build output
-        uses: actions/cache@v4
-        id: frontend-cache
-        with:
-          path: |
-            dist/
-            .angular/
-            .tmp/angular-dist/
-          key: frontend-build-${{ runner.os }}-${{ hashFiles('src/**', 'package-lock.json') }}
-          restore-keys: |
-            frontend-build-${{ runner.os }}-
+      # 📦 Instalar dependências (usa cache quando possível)
+      - name: 📦 Install npm packages
+        run: npm i
 
-      # ===== INSTALL DEPENDENCIES =====
-      - name: 📚 Install npm packages
-        run: npm ci --prefer-offline --no-audit
+      # 🏗️ Build APK debug (sem keystore)
+      - name: 🏗️ Build Debug APK (unsigned, personal use)
+        run: npm run dist:android
 
-      # ===== BUILD DEBUG APK COM BUILD SCAN =====
-      - name: 🔨 Build Android Debug APK with Build Scan
-        id: build
-        continue-on-error: true
-        run: npm run dist:android -- --scan
-        env:
-          NODE_ENV: development
-
-      # ===== ERROR HANDLING: Upload logs em falha =====
-      - name: 📋 Upload Gradle logs on build failure
-        if: steps.build.outcome == 'failure'
-        uses: actions/upload-artifact@v5
-        with:
-          name: gradle-build-logs-failure-${{ github.run_number }}
-          path: |
-            android/.gradle/
-            android/app/build/reports/
-            android/build/reports/
-          retention-days: 7
-
-      - name: ❌ Fail job if build failed
-        if: steps.build.outcome == 'failure'
-        run: exit 1
-
-      # ===== VALIDATE BUILD =====
-      - name: 🔍 List and validate generated APK files
-        id: apk-info
+      # 🔍 Debug output - mostrar APKs gerados
+      - name: 🔍 List generated APK files
         run: |
-          echo "=== APK Output Directory Structure ==="
-          ls -lah android/app/build/outputs/apk/ || true
+          echo "📱 Generated APK files:"
+          find android/app/build/outputs/apk -name "*.apk" -type f -exec ls -lh {} \;
           echo ""
-          echo "=== Finding all APK files ==="
-          find android/app/build/outputs/apk -name "*.apk" -exec ls -lh {} \;
-          echo ""
-          echo "=== APK Details ==="
-          APK_PATH=$(find android/app/build/outputs/apk/fdroid/debug -name "*.apk" | head -1)
-          if [ -f "$APK_PATH" ]; then
-            APK_SIZE=$(du -h "$APK_PATH" | cut -f1)
-            APK_SIZE_BYTES=$(stat -c%s "$APK_PATH" 2>/dev/null || stat -f%z "$APK_PATH")
-            APK_SHA256=$(sha256sum "$APK_PATH" | cut -d' ' -f1)
-            APK_NAME=$(basename "$APK_PATH")
+          echo "📂 APK locations:"
+          find android/app/build/outputs/apk -name "*.apk" -type f
 
-            echo "✅ APK gerado com sucesso!"
-            echo "📦 Nome: $APK_NAME"
-            echo "📏 Tamanho: $APK_SIZE ($APK_SIZE_BYTES bytes)"
-            echo "🔐 SHA256: $APK_SHA256"
-
-            echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
-            echo "apk_name=$APK_NAME" >> $GITHUB_OUTPUT
-            echo "apk_size=$APK_SIZE" >> $GITHUB_OUTPUT
-            echo "apk_sha256=$APK_SHA256" >> $GITHUB_OUTPUT
-            echo "build_success=true" >> $GITHUB_OUTPUT
-          else
-            echo "❌ ERRO: APK não foi gerado!"
-            echo "build_success=false" >> $GITHUB_OUTPUT
-            exit 1
-          fi
-
-      # ===== CACHE HIT REPORTING (2025 Best Practice) =====
-      - name: 📊 Report cache statistics to job summary
-        run: |
-          echo "### 📊 Cache Statistics" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Cache Layer | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| npm cache | ${{ steps.npm-cache.outputs.cache-hit == 'true' && '✅ HIT' || '❌ MISS' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Frontend build | ${{ steps.frontend-cache.outputs.cache-hit == 'true' && '✅ HIT' || '❌ MISS' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Gradle cache | Auto-managed by setup-gradle@v5 |" >> $GITHUB_STEP_SUMMARY
-          echo "| Java/Gradle | Auto-managed by setup-java |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📱 APK Information" >> $GITHUB_STEP_SUMMARY
-          echo "- **Name**: \`${{ steps.apk-info.outputs.apk_name }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Size**: ${{ steps.apk-info.outputs.apk_size }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **SHA256**: \`${{ steps.apk-info.outputs.apk_sha256 }}\`" >> $GITHUB_STEP_SUMMARY
-
-      # ===== UPLOAD ARTIFACTS =====
-      - name: 📤 Upload APK as workflow artifact
+      # 📤 Upload APKs como artifacts
+      - name: 📤 Upload APK artifacts
         uses: actions/upload-artifact@v5
         with:
           name: super-productivity-android-test-${{ github.run_number }}
-          path: android/app/build/outputs/apk/fdroid/debug/*.apk
+          path: android/app/build/outputs/apk/**/*.apk
           retention-days: 30
-          if-no-files-found: error
-          compression-level: 0  # APK já é comprimido
 
-      # ===== CREATE RELEASE (apenas em push/merge, não em PR) =====
+      # 🏷️ Gerar nome da release com sufixo -test
       - name: 🏷️ Generate release name
-        if: inputs.triggered_by == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
-        id: release-name
+        id: release_name
         run: |
-          if [ -n "${{ github.event.inputs.release_name }}" ]; then
-            RELEASE_NAME="${{ github.event.inputs.release_name }}-test"
-          else
-            VERSION=$(cat package.json | grep '"version"' | head -1 | sed 's/.*: "\(.*\)".*/\1/')
-            DATE=$(date +%Y%m%d-%H%M)
-            RELEASE_NAME="v${VERSION}-test-${DATE}-build${{ github.run_number }}"
-          fi
-          echo "name=${RELEASE_NAME}" >> $GITHUB_OUTPUT
-          echo "Generated release name: ${RELEASE_NAME}"
+          # Get version from package.json
+          VERSION=$(node -p "require('./package.json').version")
 
-      - name: 🚀 Create or update GitHub Release
-        if: inputs.triggered_by == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+          # Use custom name if provided, otherwise use version-based name
+          if [ -n "${{ github.event.inputs.release_name }}" ]; then
+            RELEASE_NAME="${{ github.event.inputs.release_name }}"
+          else
+            RELEASE_NAME="v${VERSION}-test-build-${{ github.run_number }}"
+          fi
+
+          echo "release_name=${RELEASE_NAME}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "📋 Release name: ${RELEASE_NAME}"
+
+      # 🚀 Criar GitHub Release com APKs
+      - name: 🚀 Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.release-name.outputs.name }}
-          name: "🧪 Test Build - ${{ steps.release-name.outputs.name }}"
-          body: |
-            ## 🤖 Android APK - Build de Teste (Uso Pessoal)
-
-            **⚠️ ATENÇÃO**: Este é um build de **teste/desenvolvimento** para uso pessoal.
-
-            ### 🔴 Limitações deste build:
-            - ❌ APK **não-assinado** (debug build)
-            - ❌ Não otimizado para produção (mais lento e maior)
-            - ❌ Usa flavor `fdroid` (sem serviços Google Play)
-            - ✅ Apenas para testes em dispositivos pessoais
-
-            ---
-
-            ### 📱 Como instalar:
-
-            1. **Baixe o APK** abaixo (procure por `app-fdroid-debug.apk`)
-            2. No **Android**, vá em:
-               - Configurações → Segurança
-               - Habilite "**Instalar apps desconhecidos**" ou "**Fontes desconhecidas**"
-            3. **Abra o APK** baixado e toque em **Instalar**
-            4. Se já tiver uma versão instalada, você pode precisar desinstalar primeiro
-
-            ---
-
-            ### 📊 Informações do Build:
-
-            | Info | Valor |
-            |------|-------|
-            | **APK** | `${{ steps.apk-info.outputs.apk_name }}` |
-            | **Tamanho** | `${{ steps.apk-info.outputs.apk_size }}` |
-            | **SHA256** | `${{ steps.apk-info.outputs.apk_sha256 }}` |
-            | **Commit** | [`${{ inputs.commit_sha || github.sha }}`](${{ github.server_url }}/${{ github.repository }}/commit/${{ inputs.commit_sha || github.sha }}) |
-            | **Branch** | `${{ inputs.branch_name || github.ref_name }}` |
-            | **Build #** | `${{ github.run_number }}` |
-            | **Trigger** | `${{ inputs.triggered_by || github.event_name }}` |
-            | **Workflow** | [Ver execução](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) |
-
-            ---
-
-            ### 📝 Último commit:
-            ```
-            ${{ github.event.head_commit.message }}
-            ```
-
-            ---
-
-            ### 🔐 Verificação de Integridade:
-
-            Para verificar a integridade do APK baixado:
-            ```bash
-            sha256sum app-fdroid-debug.apk
-            # Deve corresponder a: ${{ steps.apk-info.outputs.apk_sha256 }}
-            ```
-
-            ---
-
-            ### 🆚 Diferenças vs Build de Produção:
-
-            | Aspecto | Produção | Este Build (Teste) |
-            |---------|----------|-------------------|
-            | Flavor | `play` | `fdroid` |
-            | Build Type | `release` | `debug` |
-            | Assinatura | Keystore produção | Debug auto-sign |
-            | Otimização | Minificado | Não otimizado |
-            | Google Play Services | ✅ Sim | ❌ Não |
-            | Destino | Google Play Store | Teste pessoal |
-
-            ---
-
-            _Build gerado automaticamente com GitHub Actions - Otimizado com best practices 2025_
-          files: android/app/build/outputs/apk/fdroid/debug/*.apk
-          draft: false
-          prerelease: true
-          make_latest: false
-          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ steps.release_name.outputs.release_name }}
+          name: ${{ steps.release_name.outputs.release_name }}
+          prerelease: true  # Marca como prerelease (não é versão oficial)
+          make_latest: false  # Não marcar como latest release
           fail_on_unmatched_files: true
+          files: |
+            android/app/build/outputs/apk/**/*.apk
+          body: |
+            # 🧪 Build de Teste - Super Productivity v${{ steps.release_name.outputs.version }}
 
-      # ===== COMENTÁRIO NO PR =====
-      - name: 💬 Comment on PR with APK info
-        if: inputs.pr_number != 0
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const comment = `## 🤖 Android APK de Teste Gerado!
+            ⚠️ **ATENÇÃO**: Este é um build de teste/uso pessoal, não uma versão oficial.
 
-            ✅ O build do APK de teste foi concluído com sucesso.
+            ## 📱 Instalação
 
-            ### 📦 Informações do APK:
-            - **Nome**: \`${{ steps.apk-info.outputs.apk_name }}\`
-            - **Tamanho**: ${{ steps.apk-info.outputs.apk_size }}
-            - **SHA256**: \`${{ steps.apk-info.outputs.apk_sha256 }}\`
+            1. Baixe o arquivo APK abaixo
+            2. No seu dispositivo Android, habilite "Fontes desconhecidas" nas configurações
+            3. Instale o APK baixado
 
-            ### 📥 Download:
-            Os APKs estão disponíveis nos [artifacts desta execução](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            ## ℹ️ Informações do Build
 
-            ⚠️ **Nota**: O APK será publicado em Releases apenas após o merge para \`main\`.
+            - **Versão**: ${{ steps.release_name.outputs.version }}
+            - **Build Number**: ${{ github.run_number }}
+            - **Branch**: ${{ github.ref_name }}
+            - **Commit**: ${{ github.sha }}
+            - **Última mensagem**: ${{ github.event.head_commit.message || 'Manual workflow dispatch (sem mensagem de commit disponível)' }}
+
+            ## 📦 APKs Disponíveis
+
+            Os APKs estão listados abaixo nos assets desta release.
 
             ---
-            Build #${{ github.run_number }} | Commit: \`${context.payload.pull_request.head.sha.substring(0, 7)}\``;
 
-            github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: ${{ inputs.pr_number }},
-              body: comment
-            });
+            *Build gerado automaticamente pelo workflow build-android-test.yml*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # ===== SUCCESS NOTIFICATION =====
+      # ✅ Mensagem de sucesso
       - name: ✅ Build completed successfully
         run: |
-          echo "========================================="
-          echo "✅ APK de teste gerado com sucesso!"
-          echo "========================================="
-          echo "📊 Trigger: ${{ inputs.triggered_by || github.event_name }}"
-          echo "📦 Branch: ${{ inputs.branch_name || github.ref_name }}"
-          echo "🔗 Commit: ${{ inputs.commit_sha || github.sha }}"
-          echo "📱 APK: ${{ steps.apk-info.outputs.apk_name }}"
-          echo "📏 Tamanho: ${{ steps.apk-info.outputs.apk_size }}"
-          echo ""
-          if [ "${{ inputs.triggered_by }}" == "push" ] || [ "${{ github.event_name }}" == "workflow_dispatch" ] || [ "${{ github.event_name }}" == "push" ]; then
-            echo "📦 Release: ${{ steps.release-name.outputs.name }}"
-            echo "🔗 URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ steps.release-name.outputs.name }}"
-          else
-            echo "📦 APK disponível nos artifacts"
-            echo "🔗 URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          fi
-          echo "========================================="
+          echo "🎉 Build de teste concluído com sucesso!"
+          echo "📦 Release criada: ${{ steps.release_name.outputs.release_name }}"
+          echo "🔗 APKs disponíveis em: https://github.com/${{ github.repository }}/releases/tag/${{ steps.release_name.outputs.release_name }}"
