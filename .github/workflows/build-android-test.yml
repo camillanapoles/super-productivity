@@ -97,7 +97,7 @@ jobs:
 
       # 📤 Upload APKs como artifacts
       - name: 📤 Upload APK artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: super-productivity-android-test-${{ github.run_number }}
           path: android/app/build/outputs/apk/**/*.apk
